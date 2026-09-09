@@ -1,0 +1,21 @@
+# Build output
+.gradle/
+.kotlin/
+build/
+*.apk
+*.aab
+
+# Machine-specific configuration — never commit
+local.properties
+keystore.properties
+*.jks
+*.keystore
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Internal working notes
+README.TODO.MD
+*.todo

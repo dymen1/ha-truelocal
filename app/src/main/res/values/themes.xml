@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#18BCF2</color>
+
+    <style name="Theme.TrueLocal" parent="Theme.Material3.DayNight.NoActionBar" />
+</resources>
