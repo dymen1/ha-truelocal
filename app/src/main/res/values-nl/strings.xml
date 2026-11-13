@@ -23,10 +23,12 @@
     <string name="placeholder_fetch_devices">"Nog niet opgehaald — druk op 'Ververs apparaten' (token vereist)"</string>
     <string name="button_retest">Opnieuw testen</string>
     <string name="label_log">Log</string>
-    <string name="language_switch">🌐 🇳🇱</string>
+    <string name="language_switch">Taal</string>
     <string name="about_line">TrueLocal · GPL-3.0 · broncode op GitHub</string>
     <string name="about_description">Open de broncode van TrueLocal op GitHub</string>
-    <string name="language_switch_description">App-taal wisselen naar Engels</string>
+    <string name="language_switch_description">App-taal wijzigen</string>
+    <string name="language_picker_title">App-taal</string>
+    <string name="language_system">Systeemtaal</string>
 
     <string name="section_add_devices">Apparaten toevoegen</string>
     <string name="section_env_check">Omgevingscheck</string>
@@ -52,9 +54,12 @@
     <string name="status_offline">OFFLINE</string>
     <string name="msg_no_nodes">(geen nodes op de server)</string>
     <string name="msg_node_count">%1$d Matter-node(s) op de server</string>
+    <string name="matter_node_row">"Node %1$-4d %2$s  %3$s%4$s"</string>
     <string name="msg_nodes_failed">Nodes ophalen mislukt: %1$s</string>
     <string name="msg_bluetooth_off">Bluetooth staat uit; apparatenlijst blijft leeg</string>
     <string name="no_matter_advertisement">geen Matter-advertentiedata</string>
+    <string name="matter_advertisement_details">disc %1$04d vid 0x%2$04X pid 0x%3$04X</string>
+    <string name="discovered_matter_device">"%1$s  %2$s  %3$s  %4$d dBm"</string>
     <string name="unnamed_device">naamloos</string>
     <string name="msg_token_required">Deze tab gebruikt de websocket-API van HA en vereist een token</string>
     <string name="msg_ha_ws_failed">HA websocket verbinden mislukt: %1$s</string>
@@ -101,4 +106,7 @@
     <string name="check_zigbee2_bridge">Zigbee2MQTT-bridge zichtbaar in HA</string>
     <string name="check_zigbee2_count">%1$d Zigbee2MQTT-apparaten in registry</string>
     <string name="check_device_registry_error">Device registry: %1$s</string>
+    <string name="error_ingress_requires_websocket">Voor ingress is een websocketverbinding met HA vereist</string>
+    <string name="error_matter_addon_info_missing">De Supervisor-API gaf geen informatie over de Matter Server-add-on terug</string>
+    <string name="error_ingress_session_refused">De Supervisor-API weigerde een ingress-sessie aan te maken</string>
 </resources>
