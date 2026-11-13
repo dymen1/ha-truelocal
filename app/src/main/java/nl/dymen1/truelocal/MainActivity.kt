@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
@@ -215,13 +216,7 @@ class MainActivity : AppCompatActivity() {
             zigbee2PermitJoinButton.isEnabled = false
             lifecycleScope.launch { permitZigbee2Join() }
         }
-        languageButton.setOnClickListener {
-            val currentLanguage = resources.configuration.locales[0].language
-            val targetLanguage = if (currentLanguage == "nl") "en" else "nl"
-            AppCompatDelegate.setApplicationLocales(
-                LocaleListCompat.forLanguageTags(targetLanguage)
-            )
-        }
+        languageButton.setOnClickListener { showLanguagePicker() }
         aboutView.setOnClickListener {
             runCatching {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SOURCE_URL)))
@@ -274,6 +269,31 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showLanguagePicker() {
+        val languageTags = listOf("", "en", "nl", "ru")
+        val labels = arrayOf(
+            getString(R.string.language_system),
+            getString(R.string.language_english),
+            getString(R.string.language_dutch),
+            getString(R.string.language_russian)
+        )
+        val currentLanguage = AppCompatDelegate.getApplicationLocales()[0]?.language.orEmpty()
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.language_picker_title)
+            .setSingleChoiceItems(labels, languageTags.indexOf(currentLanguage)) { dialog, index ->
+                dialog.dismiss()
+                val targetLanguage = languageTags[index]
+                if (targetLanguage != currentLanguage) {
+                    AppCompatDelegate.setApplicationLocales(
+                        LocaleListCompat.forLanguageTags(targetLanguage)
+                    )
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         stopDeviceListScan()
@@ -324,12 +344,18 @@ class MainActivity : AppCompatActivity() {
                 (serviceData[3].toInt() and 0xff)
             val productId = ((serviceData[6].toInt() and 0xff) shl 8) or
                 (serviceData[5].toInt() and 0xff)
-            "disc %04d vid 0x%04X pid 0x%04X".format(discriminator, vendorId, productId)
+            getString(R.string.matter_advertisement_details, discriminator, vendorId, productId)
         } else {
             getString(R.string.no_matter_advertisement)
         }
         val name = result.scanRecord?.deviceName ?: getString(R.string.unnamed_device)
-        val label = "%s  %s  %s  %d dBm".format(result.device.address, name, details, result.rssi)
+        val label = getString(
+            R.string.discovered_matter_device,
+            result.device.address,
+            name,
+            details,
+            result.rssi
+        )
         synchronized(discoveredDevices) {
             discoveredDevices[result.device.address] =
                 DiscoveredDevice(System.currentTimeMillis(), result.rssi, label)
@@ -358,8 +384,13 @@ class MainActivity : AppCompatActivity() {
                     getString(R.string.status_offline)
                 }
                 lines.add(
-                    "Node %-4d %s  %s%s"
-                        .format(node.optLong("node_id"), availability, name, labelSuffix)
+                    getString(
+                        R.string.matter_node_row,
+                        node.optLong("node_id"),
+                        availability,
+                        name,
+                        labelSuffix
+                    )
                 )
             }
             runOnUiThread {
@@ -384,14 +415,14 @@ class MainActivity : AppCompatActivity() {
             )
         }
         val haWebSocket = ensureHaWebSocket()
-            ?: throw IllegalStateException("HA websocket connection required for ingress")
+            ?: throw IllegalStateException(getString(R.string.error_ingress_requires_websocket))
         val addonInfo = haWebSocket.supervisorApi("/addons/core_matter_server/info")
-            ?: throw IllegalStateException("Supervisor API returned no Matter Server add-on info")
+            ?: throw IllegalStateException(getString(R.string.error_matter_addon_info_missing))
         val ingressPath = addonInfo.getString("ingress_url").trimEnd('/')
         val session = haWebSocket.supervisorApi("/ingress/session", "post")
             ?.optString("session")
         if (session.isNullOrBlank()) {
-            throw IllegalStateException("Supervisor API refused to create an ingress session")
+            throw IllegalStateException(getString(R.string.error_ingress_session_refused))
         }
         return HaIngress.buildAccess(homeAssistantUrl, ingressPath, session, token)
     }

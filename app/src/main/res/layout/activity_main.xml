@@ -24,9 +24,9 @@
             android:textColor="?android:attr/textColorSecondary"
             android:textSize="12sp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/languageButton"
-            style="?android:attr/borderlessButtonStyle"
+            style="@style/Widget.Material3.Button.TonalButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/language_switch"
@@ -41,7 +41,7 @@
         android:layout_height="wrap_content"
         android:hint="@string/hint_home_assistant_url"
         android:inputType="textUri"
-        android:text="http://homeassistant.local:8123" />
+        android:text="@string/default_home_assistant_url" />
 
     <EditText
         android:id="@+id/tokenInput"

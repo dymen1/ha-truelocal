@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TrueLocal</string>
+    <string name="default_home_assistant_url" translatable="false">http://homeassistant.local:8123</string>
 
     <string name="hint_home_assistant_url">Home Assistant URL</string>
     <string name="hint_token">Long-lived access token</string>
@@ -23,10 +24,15 @@
     <string name="placeholder_fetch_devices">"Not fetched yet — press 'Refresh devices' (token required)"</string>
     <string name="button_retest">Run again</string>
     <string name="label_log">Log</string>
-    <string name="language_switch">🌐 🇬🇧</string>
+    <string name="language_switch">Language</string>
     <string name="about_line">TrueLocal · GPL-3.0 · source on GitHub</string>
     <string name="about_description">Open the TrueLocal source code on GitHub</string>
-    <string name="language_switch_description">Switch app language to Dutch</string>
+    <string name="language_switch_description">Change app language</string>
+    <string name="language_picker_title">App language</string>
+    <string name="language_system">System default</string>
+    <string name="language_english" translatable="false">English</string>
+    <string name="language_dutch" translatable="false">Nederlands</string>
+    <string name="language_russian" translatable="false">Русский</string>
 
     <string name="section_add_devices">Add devices</string>
     <string name="section_env_check">Environment check</string>
@@ -52,9 +58,12 @@
     <string name="status_offline">OFFLINE</string>
     <string name="msg_no_nodes">(no nodes on the server)</string>
     <string name="msg_node_count">%1$d Matter node(s) on the server</string>
+    <string name="matter_node_row">"Node %1$-4d %2$s  %3$s%4$s"</string>
     <string name="msg_nodes_failed">Fetching nodes failed: %1$s</string>
     <string name="msg_bluetooth_off">Bluetooth is off; the device list stays empty</string>
     <string name="no_matter_advertisement">no Matter advertisement data</string>
+    <string name="matter_advertisement_details">disc %1$04d vid 0x%2$04X pid 0x%3$04X</string>
+    <string name="discovered_matter_device">"%1$s  %2$s  %3$s  %4$d dBm"</string>
     <string name="unnamed_device">unnamed</string>
     <string name="msg_token_required">This tab uses the Home Assistant websocket API and requires a token</string>
     <string name="msg_ha_ws_failed">Connecting to the HA websocket failed: %1$s</string>
@@ -101,4 +110,7 @@
     <string name="check_zigbee2_bridge">Zigbee2MQTT bridge visible in HA</string>
     <string name="check_zigbee2_count">%1$d Zigbee2MQTT devices in registry</string>
     <string name="check_device_registry_error">Device registry: %1$s</string>
+    <string name="error_ingress_requires_websocket">HA websocket connection required for ingress</string>
+    <string name="error_matter_addon_info_missing">Supervisor API returned no Matter Server add-on info</string>
+    <string name="error_ingress_session_refused">Supervisor API refused to create an ingress session</string>
 </resources>
