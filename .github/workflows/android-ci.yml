@@ -3,7 +3,7 @@ name: Android CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, ci/verify-android-build]
 
 permissions:
   contents: read
