@@ -83,6 +83,11 @@ Note on Home Assistant versions: with a long-lived access token the REST proxy a
 session) through the `supervisor/api` websocket command instead. On older HA releases that
 still allow the REST route this makes no difference.
 
+On Home Assistant **Container/Core** there is no Supervisor at all: the `supervisor/api`
+command does not exist and ingress is unavailable. The app then uses a direct connection to a
+standalone matter.js server instead — see [Docker / Home Assistant
+Container](#docker--home-assistant-container).
+
 ## One-time setup
 
 ### 1. Matter Server add-on
@@ -132,22 +137,89 @@ file to the phone. Requires Android 12 or newer. Prebuilt signed APKs are attach
 For a signed release build, create a `keystore.properties` in the project root (see
 `app/build.gradle.kts` for the expected keys); without it the release build is unsigned.
 
+## Docker / Home Assistant Container
+
+Home Assistant Container (the Docker image) has no Supervisor: there are no add-ons, no
+`/api/hassio_ingress/...`, and the `supervisor/api` websocket command is not even registered.
+The app supports that setup with a second transport — a direct websocket connection to a
+standalone matter.js server on port 5580.
+
+### 1. Run the matter.js server with the BLE proxy
+
+The BLE proxy is what lets the server borrow your phone's Bluetooth radio for commissioning. In
+the container image it is **off by default**; without it `/ble` does not exist and commissioning
+over BLE cannot work.
+
+```yaml
+services:
+  matterjs-server:
+    image: ghcr.io/matter-js/matterjs-server:stable
+    container_name: matterjs-server
+    restart: unless-stopped
+    network_mode: host          # mDNS and Thread need this
+    environment:
+      BLE_PROXY: "true"         # required, mutually exclusive with BLUETOOTH_ADAPTER
+    volumes:
+      - ./matter-data:/data
+```
+
+`network_mode: host` also publishes `/ws` and `/ble` on the host's port 5580. Do not set
+`LISTEN_ADDRESS=127.0.0.1` if the phone must reach it. Bridge networking with `5580:5580`
+works too, but device discovery becomes more fragile.
+
+Use the **matter.js** image, not `python-matter-server`: only the matter.js server exposes the
+`/ble` endpoint.
+
+### 2. Point Home Assistant at the same server
+
+- **Matter** integration → add it with `ws://<ha-host>:5580/ws` as the server URL. With host
+  networking on both containers, `ws://localhost:5580/ws` also works.
+- **Thread**: add the OpenThread Border Router manually (for example as another container),
+  import its dataset and make it preferred.
+- **Zigbee2MQTT/MQTT**: run the broker and bridge as containers. The app's Zigbee tabs only
+  need the MQTT integration loaded and an admin token.
+
+### 3. Fill in the app
+
+| Field | Docker / Core |
+|---|---|
+| Home Assistant URL | `http://<ha-host>:8123` |
+| Long-lived access token | optional; needed for the Zigbee tabs and the Thread sync |
+| Matter server URL | `http://<ha-host>:5580` |
+
+As soon as the Matter server URL is filled in, the app connects directly and skips every
+add-on check. The environment check still verifies `/ws`, the server's BLE proxy flag
+(`bluetooth_enabled`), the `/ble` handshake and, when a token is present, the Matter/Thread
+integrations and the preferred Thread dataset.
+
+If the server reports `thread_credentials_set: false`, press **Send Thread dataset to the
+Matter server** on the Matter tab. The app reads the preferred dataset from Home Assistant
+(`thread/get_dataset_tlv`) and writes it to the server (`set_thread_dataset`) — in Docker
+nothing else does that until you open the Thread panel in the HA frontend.
+
+### Security
+
+Direct mode has no authentication, by design of the matter.js server. Keep port 5580 on your
+trusted LAN, or put a TLS/authenticating reverse proxy in front of it. Never expose it to the
+internet.
+
 ## Usage
 
-1. Enter the **HA URL** and paste the **token**. Use **exactly** the URL you open HA on in
+1. Enter the **HA URL** and paste the **token**. On Docker/Core also enter the **Matter server
+   URL** (`http://<ha-host>:5580`). Use **exactly** the URL you open HA on in
    the browser. On a standard install that includes the port (`http://192.168.1.10:8123`);
    behind a reverse proxy or on your own domain you must **leave the port out** — `:8123` is
    usually not reachable there and the connection will fail. If a hostname does not resolve
    (Android often cannot resolve `.local`/mDNS names), use the IP address instead
-2. **Connect** — the log must show: ingress session opened, `BLE proxy handshake complete`,
-   `Matter server connected ... thread_credentials=true`
+2. **Connect** — the log must show: ingress session opened (or `Direct mode: ws://…`),
+   `BLE proxy handshake complete`, `Matter server connected ... thread_credentials=true`
 3. Put the light in pairing mode (toggle power 5× until it blinks), phone next to it
 4. **Scan QR** (or type the 11-digit pairing code) → **Add device**
 5. Wait (~45 s for Thread). On success the light appears in HA automatically.
 
-Leave the token field empty to connect directly without ingress via
-`http://<ha-host>:5580` (the add-on runs on the host network). Works, but that port has no
-authentication — the ingress route is the proper one.
+On Home Assistant OS leave the **Matter server URL** empty: the app then uses the add-on through
+ingress. If you leave the token empty as well, the app falls back to a direct connection at the
+HA URL, which is only useful for the Matter tab (that port has no authentication).
 
 ## Known pitfall: Google notices the light too
 
@@ -165,7 +237,8 @@ mode with the prompt "Scan the Matter QR code on the light".
 
 - Everything runs in the Activity: the screen stays on during commissioning, do not swipe the
   app away
-- Ingress sessions expire after inactivity; press **Connect** again
+- Ingress sessions expire after inactivity (Home Assistant OS only); press **Connect** again
+- Direct mode (Docker/Core) has no transport authentication — keep port 5580 on a trusted LAN
 - One commissioning at a time
 - Error handling is a log line, not a retry
 

@@ -4,7 +4,9 @@
 
     <string name="hint_home_assistant_url">Home Assistant URL</string>
     <string name="hint_token">Long-lived access token</string>
-    <string name="helper_token">"Leave the token empty to connect directly without ingress; then use http://&lt;ha-host&gt;:5580 as the URL (Matter tab only)"</string>
+    <string name="helper_token">"Admin token from Home Assistant. Needed for the Zigbee tabs and for sending Thread credentials; leave empty if you only use the Matter tab."</string>
+    <string name="hint_matter_server_url">Matter server URL (Docker / Core), optional</string>
+    <string name="helper_matter_url">"Leave empty on Home Assistant OS: the Matter Server add-on is then used through ingress. On Docker or Core enter the matter.js server, e.g. http://192.168.1.10:5580 (run it with BLE_PROXY=true). Keep that port on your trusted LAN."</string>
     <string name="tab_matter">Matter</string>
     <string name="tab_zigbee">Zigbee (Legacy)</string>
     <string name="tab_zigbee2">Zigbee (MQTT)</string>
@@ -71,6 +73,8 @@
 
     <string name="check_phone_bluetooth">Bluetooth enabled on phone</string>
     <string name="check_direct_mode_skipped">Direct mode: add-on and integration checks skipped (no token)</string>
+    <string name="check_mode_ingress">Mode: Supervisor (Matter Server add-on via ingress)</string>
+    <string name="check_mode_standalone">Mode: standalone (direct connection to the Matter server)</string>
     <string name="check_matter_addon_installed">Matter Server add-on installed%1$s</string>
     <string name="check_matter_addon_started">Matter Server add-on started</string>
     <string name="check_matter_addon_ingress">Ingress enabled on the Matter Server add-on</string>
@@ -82,13 +86,24 @@
     <string name="thread_channel">(channel %1$d)</string>
     <string name="check_thread_datasets_error">Thread datasets: %1$s</string>
     <string name="check_ha_ws_unreachable">HA websocket unreachable for the integration check</string>
-    <string name="check_direct_connection">Direct connection established</string>
     <string name="check_ingress_session">Ingress session opened</string>
     <string name="check_matter_ws_reachable">Matter Server /ws reachable</string>
     <string name="check_ble_proxy_active">BLE proxy active on the server</string>
     <string name="check_thread_dataset_present">Thread dataset present on the server</string>
     <string name="check_matter_ws_error">Matter Server /ws: %1$s</string>
     <string name="check_ble_endpoint">/ble endpoint accepts a BLE proxy client</string>
+    <string name="check_ble_endpoint_hint">Set BLE_PROXY=true on the matter.js server and keep port 5580 reachable</string>
+    <string name="msg_ha_ws_required">Ingress mode needs the Home Assistant websocket: enter the HA URL and an admin token, or fill in the Matter server URL</string>
+    <string name="msg_no_supervisor">This Home Assistant has no Supervisor (Container/Core). Enter the Matter server URL, e.g. http://&lt;ha-host&gt;:5580</string>
+    <string name="msg_no_matter_addon_info">The Supervisor returned no Matter Server add-on info — is the add-on installed?</string>
+    <string name="msg_no_ingress_url">The Matter Server add-on has no ingress URL — enable ingress or fill in the Matter server URL</string>
+    <string name="msg_ingress_session_failed">The Supervisor refused to create an ingress session</string>
+    <string name="check_supervisor_skipped">No Supervisor (Container/Core): add-on checks skipped</string>
+    <string name="button_sync_thread">Send Thread dataset to the Matter server</string>
+    <string name="msg_sync_thread_started">Sending Thread dataset \"%1$s\" to the Matter server…</string>
+    <string name="msg_sync_thread_success">Thread dataset sent to the Matter server</string>
+    <string name="msg_sync_thread_no_dataset">No preferred Thread dataset found in Home Assistant</string>
+    <string name="msg_sync_thread_failed">Sending the Thread dataset failed: %1$s</string>
     <string name="check_test_aborted">Test aborted: %1$s</string>
     <string name="check_ha_ws_token">HA websocket reachable with token</string>
     <string name="check_zha_loaded">ZHA integration loaded in HA</string>

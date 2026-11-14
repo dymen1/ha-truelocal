@@ -4,7 +4,9 @@
 
     <string name="hint_home_assistant_url">Home Assistant URL</string>
     <string name="hint_token">Long-lived access token</string>
-    <string name="helper_token">"Token leeg laten = direct verbinden zonder ingress; vul dan als URL http://&lt;ha-host&gt;:5580 in (alleen Matter-tab)"</string>
+    <string name="helper_token">"Admintoken van Home Assistant. Nodig voor de Zigbee-tabs en voor het versturen van Thread-credentials; leeg laten als je alleen de Matter-tab gebruikt."</string>
+    <string name="hint_matter_server_url">Matter-server-URL (Docker / Core), optioneel</string>
+    <string name="helper_matter_url">"Laat leeg op Home Assistant OS: dan wordt de Matter Server add-on via ingress gebruikt. Op Docker of Core vul je de matter.js-server in, bijv. http://192.168.1.10:5580 (start hem met BLE_PROXY=true). Houd die poort binnen je vertrouwde LAN."</string>
     <string name="tab_matter">Matter</string>
     <string name="tab_zigbee">Zigbee (Legacy)</string>
     <string name="tab_zigbee2">Zigbee (MQTT)</string>
@@ -71,6 +73,8 @@
 
     <string name="check_phone_bluetooth">Bluetooth aan op telefoon</string>
     <string name="check_direct_mode_skipped">Directe modus: add-on- en integratiechecks overgeslagen (geen token)</string>
+    <string name="check_mode_ingress">Modus: Supervisor (Matter Server add-on via ingress)</string>
+    <string name="check_mode_standalone">Modus: standalone (directe verbinding met de Matter-server)</string>
     <string name="check_matter_addon_installed">Matter Server add-on geïnstalleerd%1$s</string>
     <string name="check_matter_addon_started">Matter Server add-on gestart</string>
     <string name="check_matter_addon_ingress">Ingress ingeschakeld op de Matter Server add-on</string>
@@ -82,13 +86,24 @@
     <string name="thread_channel">(kanaal %1$d)</string>
     <string name="check_thread_datasets_error">Thread-datasets: %1$s</string>
     <string name="check_ha_ws_unreachable">HA websocket niet bereikbaar voor integratiecheck</string>
-    <string name="check_direct_connection">Directe verbinding opgezet</string>
     <string name="check_ingress_session">Ingress-sessie geopend</string>
     <string name="check_matter_ws_reachable">Matter Server /ws bereikbaar</string>
     <string name="check_ble_proxy_active">BLE proxy actief op de server</string>
     <string name="check_thread_dataset_present">Thread-dataset aanwezig op de server</string>
     <string name="check_matter_ws_error">Matter Server /ws: %1$s</string>
     <string name="check_ble_endpoint">/ble-endpoint accepteert BLE-proxyclient</string>
+    <string name="check_ble_endpoint_hint">Zet BLE_PROXY=true op de matter.js-server en houd poort 5580 bereikbaar</string>
+    <string name="msg_ha_ws_required">Ingress-modus vereist de websocket van Home Assistant: vul de HA-URL en een admintoken in, of vul de Matter-server-URL in</string>
+    <string name="msg_no_supervisor">Deze Home Assistant heeft geen Supervisor (Container/Core). Vul de Matter-server-URL in, bijv. http://&lt;ha-host&gt;:5580</string>
+    <string name="msg_no_matter_addon_info">De Supervisor gaf geen Matter Server add-on-info terug — is de add-on geïnstalleerd?</string>
+    <string name="msg_no_ingress_url">De Matter Server add-on heeft geen ingress-URL — zet ingress aan of vul de Matter-server-URL in</string>
+    <string name="msg_ingress_session_failed">De Supervisor weigerde een ingress-sessie te maken</string>
+    <string name="check_supervisor_skipped">Geen Supervisor (Container/Core): add-on-checks overgeslagen</string>
+    <string name="button_sync_thread">Stuur Thread-dataset naar de Matter-server</string>
+    <string name="msg_sync_thread_started">Thread-dataset \"%1$s\" wordt naar de Matter-server gestuurd…</string>
+    <string name="msg_sync_thread_success">Thread-dataset naar de Matter-server gestuurd</string>
+    <string name="msg_sync_thread_no_dataset">Geen voorkeurs-Thread-dataset gevonden in Home Assistant</string>
+    <string name="msg_sync_thread_failed">Thread-dataset versturen mislukt: %1$s</string>
     <string name="check_test_aborted">Test afgebroken: %1$s</string>
     <string name="check_ha_ws_token">HA websocket bereikbaar met token</string>
     <string name="check_zha_loaded">ZHA-integratie geladen in HA</string>

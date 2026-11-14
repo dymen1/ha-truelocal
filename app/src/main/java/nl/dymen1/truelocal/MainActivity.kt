@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var homeAssistantUrlInput: EditText
     private lateinit var tokenInput: EditText
+    private lateinit var matterServerUrlInput: EditText
     private lateinit var pairingCodeInput: EditText
     private lateinit var connectButton: Button
     private lateinit var commissionButton: Button
@@ -74,6 +75,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var zigbee2DevicesView: TextView
     private var haWebSocketClient: HaWebSocketClient? = null
     private lateinit var matterTestButton: Button
+    private lateinit var matterThreadSyncButton: Button
     private lateinit var matterStatusView: TextView
     private lateinit var zigbeeTestButton: Button
     private lateinit var zigbeeStatusView: TextView
@@ -120,6 +122,7 @@ class MainActivity : AppCompatActivity() {
 
         homeAssistantUrlInput = findViewById(R.id.homeAssistantUrlInput)
         tokenInput = findViewById(R.id.tokenInput)
+        matterServerUrlInput = findViewById(R.id.matterServerUrlInput)
         pairingCodeInput = findViewById(R.id.pairingCodeInput)
         connectButton = findViewById(R.id.connectButton)
         commissionButton = findViewById(R.id.commissionButton)
@@ -141,6 +144,7 @@ class MainActivity : AppCompatActivity() {
         zigbee2PermitJoinButton = findViewById(R.id.zigbee2PermitJoinButton)
         zigbee2DevicesView = findViewById(R.id.zigbee2DevicesView)
         matterTestButton = findViewById(R.id.matterTestButton)
+        matterThreadSyncButton = findViewById(R.id.matterThreadSyncButton)
         matterStatusView = findViewById(R.id.matterStatusView)
         zigbeeTestButton = findViewById(R.id.zigbeeTestButton)
         zigbeeStatusView = findViewById(R.id.zigbeeStatusView)
@@ -228,6 +232,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         matterTestButton.setOnClickListener { startMatterEnvironmentTest() }
+        matterThreadSyncButton.setOnClickListener {
+            saveInputs()
+            matterThreadSyncButton.isEnabled = false
+            lifecycleScope.launch { syncThreadDataset() }
+        }
         zigbeeTestButton.setOnClickListener { startZigbeeEnvironmentTest() }
         zigbee2TestButton.setOnClickListener { startZigbee2EnvironmentTest() }
         setupAccordion(
@@ -373,27 +382,49 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun resolveAccess(
-        homeAssistantUrl: String,
-        token: String
-    ): HaIngress.IngressAccess {
-        if (token.isEmpty()) {
-            return HaIngress.IngressAccess(
-                homeAssistantUrl.trimEnd('/').replaceFirst("http", "ws"),
-                emptyMap()
-            )
+    /**
+     * Decides how to reach the Matter server. The optional Matter server URL always means a direct
+     * connection (Docker/Core). Otherwise HAOS users get the add-on through ingress, and a token-less
+     * setup keeps the old direct mode on the HA URL.
+     */
+    private suspend fun resolveMatterAccess(): HaIngress.MatterAccess {
+        val matterServerUrl = matterServerUrlInput.text.toString().trim()
+        if (matterServerUrl.isNotEmpty()) {
+            return HaIngress.directAccess(matterServerUrl)
         }
+        val token = tokenInput.text.toString().trim()
+        if (token.isEmpty()) {
+            return HaIngress.directAccess(homeAssistantUrlInput.text.toString().trim())
+        }
+        return resolveIngressAccess(token)
+    }
+
+    private suspend fun resolveIngressAccess(token: String): HaIngress.MatterAccess {
         val haWebSocket = ensureHaWebSocket()
-            ?: throw IllegalStateException("HA websocket connection required for ingress")
-        val addonInfo = haWebSocket.supervisorApi("/addons/core_matter_server/info")
-            ?: throw IllegalStateException("Supervisor API returned no Matter Server add-on info")
-        val ingressPath = addonInfo.getString("ingress_url").trimEnd('/')
+            ?: throw IllegalStateException(getString(R.string.msg_ha_ws_required))
+        val addonInfo = try {
+            haWebSocket.supervisorApiOrThrow("/addons/core_matter_server/info")
+        } catch (error: HaCommandException) {
+            if (error.errorCode == "unknown_command") {
+                throw IllegalStateException(getString(R.string.msg_no_supervisor))
+            }
+            throw IllegalStateException(error.message ?: getString(R.string.msg_no_matter_addon_info))
+        }
+        val ingressPath = addonInfo.optString("ingress_url").trimEnd('/')
+        if (ingressPath.isBlank()) {
+            throw IllegalStateException(getString(R.string.msg_no_ingress_url))
+        }
         val session = haWebSocket.supervisorApi("/ingress/session", "post")
             ?.optString("session")
         if (session.isNullOrBlank()) {
-            throw IllegalStateException("Supervisor API refused to create an ingress session")
+            throw IllegalStateException(getString(R.string.msg_ingress_session_failed))
         }
-        return HaIngress.buildAccess(homeAssistantUrl, ingressPath, session, token)
+        return HaIngress.buildAccess(
+            homeAssistantUrlInput.text.toString().trim(),
+            ingressPath,
+            session,
+            token
+        )
     }
 
     private suspend fun ensureHaWebSocket(): HaWebSocketClient? {
@@ -582,43 +613,62 @@ class MainActivity : AppCompatActivity() {
                     getString(R.string.check_phone_bluetooth)
                 )
             )
-            val homeAssistantUrl = homeAssistantUrlInput.text.toString().trim()
+            val access = resolveMatterAccess()
+            val ingress = access.mode == HaIngress.Mode.INGRESS
+            lines.add(
+                checkLine(
+                    true,
+                    if (ingress) {
+                        getString(R.string.check_mode_ingress)
+                    } else {
+                        getString(R.string.check_mode_standalone)
+                    }
+                )
+            )
+            if (ingress) {
+                lines.add(checkLine(true, getString(R.string.check_ingress_session)))
+            }
             val token = tokenInput.text.toString().trim()
             if (token.isEmpty()) {
                 lines.add(checkLine(true, getString(R.string.check_direct_mode_skipped)))
             } else {
                 val haWebSocket = ensureHaWebSocket()
-                if (haWebSocket != null) {
-                    val matterAddon = haWebSocket.supervisorApi("/addons/core_matter_server/info")
-                    lines.add(
-                        checkLine(
-                            matterAddon != null,
-                            getString(
-                                R.string.check_matter_addon_installed,
-                                versionSuffix(matterAddon)
+                if (haWebSocket == null) {
+                    lines.add(checkLine(false, getString(R.string.check_ha_ws_unreachable)))
+                } else {
+                    if (ingress) {
+                        val matterAddon =
+                            haWebSocket.supervisorApi("/addons/core_matter_server/info")
+                        lines.add(
+                            checkLine(
+                                matterAddon != null,
+                                getString(
+                                    R.string.check_matter_addon_installed,
+                                    versionSuffix(matterAddon)
+                                )
                             )
                         )
-                    )
-                    lines.add(
-                        checkLine(
-                            matterAddon?.optString("state") == "started",
-                            getString(R.string.check_matter_addon_started)
+                        lines.add(
+                            checkLine(
+                                matterAddon?.optString("state") == "started",
+                                getString(R.string.check_matter_addon_started)
+                            )
                         )
-                    )
-                    lines.add(
-                        checkLine(
-                            matterAddon?.optBoolean("ingress") == true,
-                            getString(R.string.check_matter_addon_ingress)
+                        lines.add(
+                            checkLine(
+                                matterAddon?.optBoolean("ingress") == true,
+                                getString(R.string.check_matter_addon_ingress)
+                            )
                         )
-                    )
-                    val otbrAddon =
-                        haWebSocket.supervisorApi("/addons/core_openthread_border_router/info")
-                    lines.add(
-                        checkLine(
-                            otbrAddon?.optString("state") == "started",
-                            getString(R.string.check_otbr_started, versionSuffix(otbrAddon))
+                        val otbrAddon =
+                            haWebSocket.supervisorApi("/addons/core_openthread_border_router/info")
+                        lines.add(
+                            checkLine(
+                                otbrAddon?.optString("state") == "started",
+                                getString(R.string.check_otbr_started, versionSuffix(otbrAddon))
+                            )
                         )
-                    )
+                    }
                     val loadedDomains = loadedConfigEntryDomains(haWebSocket)
                     lines.add(
                         checkLine(
@@ -633,15 +683,10 @@ class MainActivity : AppCompatActivity() {
                         )
                     )
                     try {
-                        val datasets = haWebSocket.listThreadDatasets()
-                        var preferredNetwork: String? = null
-                        for (index in 0 until datasets.length()) {
-                            val dataset = datasets.getJSONObject(index)
-                            if (dataset.optBoolean("preferred")) {
-                                preferredNetwork = dataset.optString("network_name") + " " +
-                                    getString(R.string.thread_channel, dataset.optInt("channel"))
-                                break
-                            }
+                        val preferred = haWebSocket.preferredDataset()
+                        val preferredNetwork = preferred?.let {
+                            it.optString("network_name") + " " +
+                                getString(R.string.thread_channel, it.optInt("channel"))
                         }
                         lines.add(
                             checkLine(
@@ -661,18 +706,8 @@ class MainActivity : AppCompatActivity() {
                             )
                         )
                     }
-                } else {
-                    lines.add(checkLine(false, getString(R.string.check_ha_ws_unreachable)))
                 }
             }
-            val access = resolveAccess(homeAssistantUrl, token)
-            lines.add(
-                checkLine(
-                    true,
-                    if (token.isEmpty()) getString(R.string.check_direct_connection)
-                    else getString(R.string.check_ingress_session)
-                )
-            )
             val matter = MatterWsClient("${access.webSocketBase}/ws", access.headers) {}
             try {
                 withTimeout(10_000) { matter.connect(httpClient).await() }
@@ -699,18 +734,52 @@ class MainActivity : AppCompatActivity() {
             } finally {
                 matter.close()
             }
-            lines.add(
-                checkLine(
-                    testBleEndpoint("${access.webSocketBase}/ble", access.headers),
-                    getString(R.string.check_ble_endpoint)
-                )
-            )
+            val bleOk = testBleEndpoint("${access.webSocketBase}/ble", access.headers)
+            lines.add(checkLine(bleOk, getString(R.string.check_ble_endpoint)))
+            if (!bleOk) {
+                lines.add("     " + getString(R.string.check_ble_endpoint_hint))
+            }
         } catch (error: Exception) {
             lines.add(checkLine(false, getString(R.string.check_test_aborted, error.message)))
         }
         runOnUiThread {
             matterStatusView.text = lines.joinToString(System.lineSeparator())
             matterTestButton.isEnabled = true
+        }
+    }
+
+    /**
+     * Pushes the preferred Thread dataset from Home Assistant to the Matter server. On HAOS the
+     * supervisor normally does this for the add-on; in Docker nothing does unless the user opens the
+     * Thread panel in the HA frontend or presses this button.
+     */
+    private suspend fun syncThreadDataset() {
+        try {
+            val token = tokenInput.text.toString().trim()
+            if (token.isEmpty()) {
+                appendLog(getString(R.string.msg_token_required))
+                return
+            }
+            val haWebSocket = ensureHaWebSocket()
+                ?: throw IllegalStateException(getString(R.string.check_ha_ws_unreachable))
+            val dataset = haWebSocket.preferredDataset()
+                ?: throw IllegalStateException(getString(R.string.msg_sync_thread_no_dataset))
+            val tlv = haWebSocket.datasetTlv(dataset.optString("dataset_id"))
+                ?: throw IllegalStateException(getString(R.string.msg_sync_thread_no_dataset))
+            appendLog(getString(R.string.msg_sync_thread_started, dataset.optString("network_name")))
+            val access = resolveMatterAccess()
+            val matter = MatterWsClient("${access.webSocketBase}/ws", access.headers, ::appendLog)
+            try {
+                withTimeout(10_000) { matter.connect(httpClient).await() }
+                matter.setThreadDataset(tlv)
+            } finally {
+                matter.close()
+            }
+            appendLog(getString(R.string.msg_sync_thread_success))
+        } catch (error: Exception) {
+            appendLog(getString(R.string.msg_sync_thread_failed, error.message))
+        } finally {
+            runOnUiThread { matterThreadSyncButton.isEnabled = true }
         }
     }
 
@@ -783,20 +852,33 @@ class MainActivity : AppCompatActivity() {
         val haWebSocket = ensureHaWebSocket()
         lines.add(checkLine(haWebSocket != null, getString(R.string.check_ha_ws_token)))
         if (haWebSocket != null) {
-            val mosquittoAddon = haWebSocket.supervisorApi("/addons/core_mosquitto/info")
-            lines.add(
-                checkLine(
-                    mosquittoAddon?.optString("state") == "started",
-                    getString(R.string.check_mosquitto_started, versionSuffix(mosquittoAddon))
+            val supervisor = try {
+                haWebSocket.supervisorAvailable()
+            } catch (error: Exception) {
+                false
+            }
+            if (supervisor) {
+                val mosquittoAddon = haWebSocket.supervisorApi("/addons/core_mosquitto/info")
+                lines.add(
+                    checkLine(
+                        mosquittoAddon?.optString("state") == "started",
+                        getString(R.string.check_mosquitto_started, versionSuffix(mosquittoAddon))
+                    )
                 )
-            )
-            val zigbee2MqttAddon = haWebSocket.supervisorApi("/addons/45df7312_zigbee2mqtt/info")
-            lines.add(
-                checkLine(
-                    zigbee2MqttAddon?.optString("state") == "started",
-                    getString(R.string.check_zigbee2_addon_started, versionSuffix(zigbee2MqttAddon))
+                val zigbee2MqttAddon =
+                    haWebSocket.supervisorApi("/addons/45df7312_zigbee2mqtt/info")
+                lines.add(
+                    checkLine(
+                        zigbee2MqttAddon?.optString("state") == "started",
+                        getString(
+                            R.string.check_zigbee2_addon_started,
+                            versionSuffix(zigbee2MqttAddon)
+                        )
+                    )
                 )
-            )
+            } else {
+                lines.add(checkLine(true, getString(R.string.check_supervisor_skipped)))
+            }
             try {
                 lines.add(
                     checkLine(
@@ -847,13 +929,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun connectAll() {
-        val homeAssistantUrl = homeAssistantUrlInput.text.toString().trim()
-        val token = tokenInput.text.toString().trim()
         try {
-            val access = resolveAccess(homeAssistantUrl, token)
+            val access = resolveMatterAccess()
             appendLog(
-                if (token.isEmpty()) getString(R.string.msg_direct_mode, access.webSocketBase)
-                else getString(R.string.msg_ingress_opened)
+                if (access.mode == HaIngress.Mode.INGRESS) {
+                    getString(R.string.msg_ingress_opened)
+                } else {
+                    getString(R.string.msg_direct_mode, access.webSocketBase)
+                }
             )
             bleProxyClient?.close()
             matterClient?.close()
@@ -918,6 +1001,7 @@ class MainActivity : AppCompatActivity() {
         val preferences = getSharedPreferences("settings", MODE_PRIVATE)
         preferences.getString("home_assistant_url", null)?.let { homeAssistantUrlInput.setText(it) }
         preferences.getString("token", null)?.let { tokenInput.setText(it) }
+        preferences.getString("matter_server_url", null)?.let { matterServerUrlInput.setText(it) }
         preferences.getString("pairing_code", null)?.let { pairingCodeInput.setText(it) }
     }
 
@@ -925,6 +1009,7 @@ class MainActivity : AppCompatActivity() {
         getSharedPreferences("settings", MODE_PRIVATE).edit()
             .putString("home_assistant_url", homeAssistantUrlInput.text.toString().trim())
             .putString("token", tokenInput.text.toString().trim())
+            .putString("matter_server_url", matterServerUrlInput.text.toString().trim())
             .putString("pairing_code", pairingCodeInput.text.toString().trim())
             .apply()
     }

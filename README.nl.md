@@ -84,6 +84,11 @@ een 401, dus de app doet elke Supervisor-call (add-on-info, ingress-sessie) via 
 `supervisor/api`-websocketcommando. Op oudere HA-releases die de REST-route nog toestaan maakt
 dat geen verschil.
 
+Op Home Assistant **Container/Core** is er helemaal geen Supervisor: het
+`supervisor/api`-commando bestaat niet en ingress is niet beschikbaar. De app gebruikt dan een
+directe verbinding met een losse matter.js-server — zie [Docker / Home Assistant
+Container](#docker--home-assistant-container).
+
 ## Eenmalige setup
 
 ### 1. Matter Server add-on
@@ -129,23 +134,90 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`. Installeren via `adb install` 
 naar de telefoon kopiëren. Minimaal Android 12. Kant-en-klare gesigneerde APK's hangen onder de
 [releases](../../releases).
 
+## Docker / Home Assistant Container
+
+Home Assistant Container (de Docker-image) heeft geen Supervisor: geen add-ons, geen
+`/api/hassio_ingress/...`, en het `supervisor/api`-websocketcommando is niet eens geregistreerd.
+De app ondersteunt die opzet met een tweede transport — een directe websocketverbinding met een
+losse matter.js-server op poort 5580.
+
+### 1. matter.js-server met BLE-proxy
+
+De BLE-proxy laat de server de Bluetooth-radio van je telefoon lenen voor het commissionen. In
+de container-image staat hij **standaard uit**; zonder hem bestaat `/ble` niet en werkt
+commissionen via BLE niet.
+
+```yaml
+services:
+  matterjs-server:
+    image: ghcr.io/matter-js/matterjs-server:stable
+    container_name: matterjs-server
+    restart: unless-stopped
+    network_mode: host          # mDNS en Thread hebben dit nodig
+    environment:
+      BLE_PROXY: "true"         # verplicht, sluit BLUETOOTH_ADAPTER uit
+    volumes:
+      - ./matter-data:/data
+```
+
+`network_mode: host` zet `/ws` en `/ble` ook op poort 5580 van de host. Zet
+`LISTEN_ADDRESS` niet op `127.0.0.1` als de telefoon erbij moet kunnen. Bridge-networking met
+`5580:5580` kan ook, maar apparaatdiscovery wordt dan kwetsbaarder.
+
+Gebruik de **matter.js**-image, niet `python-matter-server`: alleen de matter.js-server heeft
+een `/ble`-endpoint.
+
+### 2. Home Assistant naar dezelfde server wijzen
+
+- **Matter**-integratie → toevoegen met `ws://<ha-host>:5580/ws` als server-URL. Met
+  host-networking op beide containers werkt `ws://localhost:5580/ws` ook.
+- **Thread**: voeg de OpenThread Border Router handmatig toe (bijv. als container), importeer
+  de dataset en maak die preferred.
+- **Zigbee2MQTT/MQTT**: draai broker en bridge als containers. De Zigbee-tabs van de app hebben
+  alleen de MQTT-integratie en een admintoken nodig.
+
+### 3. App invullen
+
+| Veld | Docker / Core |
+|---|---|
+| Home Assistant URL | `http://<ha-host>:8123` |
+| Long-lived access token | optioneel; nodig voor de Zigbee-tabs en de Thread-sync |
+| Matter-server-URL | `http://<ha-host>:5580` |
+
+Zodra de Matter-server-URL is ingevuld verbindt de app direct en slaat hij alle add-on-checks
+over. De omgevingscheck controleert nog steeds `/ws`, de BLE-proxyflag van de server
+(`bluetooth_enabled`), de `/ble`-handshake en — met token — de Matter/Thread-integraties en de
+voorkeurs-Thread-dataset.
+
+Meldt de server `thread_credentials_set: false`, druk dan op **Stuur Thread-dataset naar de
+Matter-server** op de Matter-tab. De app leest de voorkeursdataset uit Home Assistant
+(`thread/get_dataset_tlv`) en schrijft hem naar de server (`set_thread_dataset`) — in Docker
+doet verder niets dat, tot je het Thread-paneel in de HA-frontend opent.
+
+### Beveiliging
+
+Directe modus heeft geen authenticatie, dat is het ontwerp van de matter.js-server. Houd poort
+5580 binnen je vertrouwde LAN, of zet er een TLS/authenticerende reverse proxy voor. Nooit naar
+internet exposen.
+
 ## Gebruik
 
-1. **HA URL** invullen en het **token** plakken. Gebruik **exact** de URL waarop je HA in de
-   browser opent. Bij een standaardinstallatie hoort de poort erbij
+1. **HA URL** invullen en het **token** plakken. Op Docker/Core vul je ook de
+   **Matter-server-URL** in (`http://<ha-host>:5580`). Gebruik **exact** de URL waarop je HA in
+   de browser opent. Bij een standaardinstallatie hoort de poort erbij
    (`http://192.168.1.10:8123`); achter een reverse proxy of op een eigen domein moet de poort
    juist **weggelaten** worden — `:8123` is daar meestal niet bereikbaar en dan faalt de
    verbinding. Lost een hostname niet op (Android kan `.local`/mDNS-namen vaak niet vinden),
    gebruik dan het IP-adres
-2. **Verbind** — log moet tonen: ingress-sessie geopend, `BLE proxy handshake complete`,
-   `Matter server verbonden ... thread_credentials=true`
+2. **Verbind** — log moet tonen: ingress-sessie geopend (of `Directe modus: ws://…`),
+   `BLE proxy handshake complete`, `Matter server verbonden ... thread_credentials=true`
 3. Lamp in pairing-modus (5× aan/uit tot hij knippert), telefoon ernaast
 4. **Scan QR** (of typ de 11-cijferige koppelcode) → **Voeg toe**
 5. Wachten (~45 s voor Thread). Bij succes verschijnt de lamp vanzelf in HA.
 
-Laat het token-veld leeg om zonder ingress rechtstreeks te verbinden met
-`http://<ha-host>:5580` (de add-on draait op host-netwerk). Werkt, maar die poort heeft geen
-authenticatie — de ingress-route is de nette.
+Laat op Home Assistant OS de **Matter-server-URL** leeg: dan gebruikt de app de add-on via
+ingress. Laat je ook het token leeg, dan valt de app terug op een directe verbinding via de
+HA-URL; dat is alleen bruikbaar voor de Matter-tab (die poort heeft geen authenticatie).
 
 ## Bekende valkuil: Google ziet de lamp ook
 
@@ -161,7 +233,10 @@ portretmodus met de prompt "Scan de Matter QR-code op de lamp".
 ## Bekende beperkingen
 
 - Alles draait in de Activity: scherm blijft aan tijdens commissioning, app niet wegswipen
-- Ingress-sessies verlopen na een tijd inactiviteit; opnieuw op **Verbind** drukken
+- Ingress-sessies verlopen na een tijd inactiviteit (alleen Home Assistant OS); opnieuw op
+  **Verbind** drukken
+- Directe modus (Docker/Core) heeft geen transportauthenticatie — houd poort 5580 in een
+  vertrouwd LAN
 - Eén commissioning tegelijk
 - Foutafhandeling is een logregel, geen retry
 
