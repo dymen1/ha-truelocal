@@ -93,6 +93,13 @@ class HaWebSocketClient(
         return null
     }
 
+    suspend fun datasetTlv(datasetId: String): String? {
+        val response = sendCommand(
+            JSONObject().put("type", "thread/get_dataset_tlv").put("dataset_id", datasetId)
+        )
+        return response.optJSONObject("result")?.optString("tlv")?.takeIf { it.isNotBlank() }
+    }
+
     suspend fun listDeviceRegistry(): JSONArray {
         val response = sendCommand(JSONObject().put("type", "config/device_registry/list"))
         return response.optJSONArray("result") ?: JSONArray()

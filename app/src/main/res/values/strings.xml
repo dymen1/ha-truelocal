@@ -99,6 +99,11 @@
     <string name="msg_no_ingress_url">The Matter Server add-on has no ingress URL — enable ingress or fill in the Matter server URL</string>
     <string name="msg_ingress_session_failed">The Supervisor refused to create an ingress session</string>
     <string name="check_supervisor_skipped">No Supervisor (Container/Core): add-on checks skipped</string>
+    <string name="button_sync_thread">Send Thread dataset to the Matter server</string>
+    <string name="msg_sync_thread_started">Sending Thread dataset \"%1$s\" to the Matter server…</string>
+    <string name="msg_sync_thread_success">Thread dataset sent to the Matter server</string>
+    <string name="msg_sync_thread_no_dataset">No preferred Thread dataset found in Home Assistant</string>
+    <string name="msg_sync_thread_failed">Sending the Thread dataset failed: %1$s</string>
     <string name="check_test_aborted">Test aborted: %1$s</string>
     <string name="check_ha_ws_token">HA websocket reachable with token</string>
     <string name="check_zha_loaded">ZHA integration loaded in HA</string>

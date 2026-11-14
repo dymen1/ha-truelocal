@@ -39,6 +39,16 @@ class MatterWsClient(
     suspend fun commission(code: String): JSONObject =
         sendCommand("commission_with_code", JSONObject().put("code", code))
 
+    suspend fun setThreadDataset(datasetTlv: String) {
+        val response = sendCommand("set_thread_dataset", JSONObject().put("dataset", datasetTlv))
+        if (response.has("error_code")) {
+            val details = response.optString("details")
+            throw IllegalStateException(
+                details.ifBlank { "error ${response.optInt("error_code")}" }
+            )
+        }
+    }
+
     suspend fun listNodes(): JSONArray {
         val response = sendCommand("get_nodes", JSONObject().put("only_available", false))
         return response.optJSONArray("result") ?: JSONArray()

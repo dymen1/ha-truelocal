@@ -75,6 +75,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var zigbee2DevicesView: TextView
     private var haWebSocketClient: HaWebSocketClient? = null
     private lateinit var matterTestButton: Button
+    private lateinit var matterThreadSyncButton: Button
     private lateinit var matterStatusView: TextView
     private lateinit var zigbeeTestButton: Button
     private lateinit var zigbeeStatusView: TextView
@@ -143,6 +144,7 @@ class MainActivity : AppCompatActivity() {
         zigbee2PermitJoinButton = findViewById(R.id.zigbee2PermitJoinButton)
         zigbee2DevicesView = findViewById(R.id.zigbee2DevicesView)
         matterTestButton = findViewById(R.id.matterTestButton)
+        matterThreadSyncButton = findViewById(R.id.matterThreadSyncButton)
         matterStatusView = findViewById(R.id.matterStatusView)
         zigbeeTestButton = findViewById(R.id.zigbeeTestButton)
         zigbeeStatusView = findViewById(R.id.zigbeeStatusView)
@@ -230,6 +232,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
         matterTestButton.setOnClickListener { startMatterEnvironmentTest() }
+        matterThreadSyncButton.setOnClickListener {
+            saveInputs()
+            matterThreadSyncButton.isEnabled = false
+            lifecycleScope.launch { syncThreadDataset() }
+        }
         zigbeeTestButton.setOnClickListener { startZigbeeEnvironmentTest() }
         zigbee2TestButton.setOnClickListener { startZigbee2EnvironmentTest() }
         setupAccordion(
@@ -738,6 +745,41 @@ class MainActivity : AppCompatActivity() {
         runOnUiThread {
             matterStatusView.text = lines.joinToString(System.lineSeparator())
             matterTestButton.isEnabled = true
+        }
+    }
+
+    /**
+     * Pushes the preferred Thread dataset from Home Assistant to the Matter server. On HAOS the
+     * supervisor normally does this for the add-on; in Docker nothing does unless the user opens the
+     * Thread panel in the HA frontend or presses this button.
+     */
+    private suspend fun syncThreadDataset() {
+        try {
+            val token = tokenInput.text.toString().trim()
+            if (token.isEmpty()) {
+                appendLog(getString(R.string.msg_token_required))
+                return
+            }
+            val haWebSocket = ensureHaWebSocket()
+                ?: throw IllegalStateException(getString(R.string.check_ha_ws_unreachable))
+            val dataset = haWebSocket.preferredDataset()
+                ?: throw IllegalStateException(getString(R.string.msg_sync_thread_no_dataset))
+            val tlv = haWebSocket.datasetTlv(dataset.optString("dataset_id"))
+                ?: throw IllegalStateException(getString(R.string.msg_sync_thread_no_dataset))
+            appendLog(getString(R.string.msg_sync_thread_started, dataset.optString("network_name")))
+            val access = resolveMatterAccess()
+            val matter = MatterWsClient("${access.webSocketBase}/ws", access.headers, ::appendLog)
+            try {
+                withTimeout(10_000) { matter.connect(httpClient).await() }
+                matter.setThreadDataset(tlv)
+            } finally {
+                matter.close()
+            }
+            appendLog(getString(R.string.msg_sync_thread_success))
+        } catch (error: Exception) {
+            appendLog(getString(R.string.msg_sync_thread_failed, error.message))
+        } finally {
+            runOnUiThread { matterThreadSyncButton.isEnabled = true }
         }
     }
 
