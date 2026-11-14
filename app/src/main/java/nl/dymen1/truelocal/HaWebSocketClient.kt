@@ -11,6 +11,8 @@ import okhttp3.WebSocketListener
 import org.json.JSONArray
 import org.json.JSONObject
 
+class HaCommandException(val errorCode: String, message: String) : IllegalStateException(message)
+
 class HaWebSocketClient(
     homeAssistantUrl: String,
     private val token: String,
@@ -54,20 +56,41 @@ class HaWebSocketClient(
     }
 
     suspend fun supervisorApi(endpoint: String, method: String = "get"): JSONObject? = try {
-        sendCommand(
-            JSONObject()
-                .put("type", "supervisor/api")
-                .put("endpoint", endpoint)
-                .put("method", method)
-        ).optJSONObject("result")
+        supervisorApiOrThrow(endpoint, method)
     } catch (error: Exception) {
         log("supervisor/api $method $endpoint failed: ${error.message}")
         null
     }
 
+    /** Like [supervisorApi], but keeps the HA error code so callers can tell "no Supervisor" apart. */
+    suspend fun supervisorApiOrThrow(endpoint: String, method: String = "get"): JSONObject =
+        sendCommand(
+            JSONObject()
+                .put("type", "supervisor/api")
+                .put("endpoint", endpoint)
+                .put("method", method)
+        ).optJSONObject("result") ?: JSONObject()
+
+    /** True on HAOS/Supervised, false on Container/Core where the hassio integration is not loaded. */
+    suspend fun supervisorAvailable(): Boolean = try {
+        supervisorApiOrThrow("/supervisor/info")
+        true
+    } catch (error: HaCommandException) {
+        if (error.errorCode == "unknown_command") false else throw error
+    }
+
     suspend fun listThreadDatasets(): JSONArray {
         val response = sendCommand(JSONObject().put("type", "thread/list_datasets"))
         return response.optJSONObject("result")?.optJSONArray("datasets") ?: JSONArray()
+    }
+
+    suspend fun preferredDataset(): JSONObject? {
+        val datasets = listThreadDatasets()
+        for (index in 0 until datasets.length()) {
+            val dataset = datasets.optJSONObject(index) ?: continue
+            if (dataset.optBoolean("preferred")) return dataset
+        }
+        return null
     }
 
     suspend fun listDeviceRegistry(): JSONArray {
@@ -96,8 +119,10 @@ class HaWebSocketClient(
         socket.send(payload.put("id", messageId).toString())
         val response = deferred.await()
         if (!response.optBoolean("success", true)) {
-            throw IllegalStateException(
-                response.optJSONObject("error")?.optString("message") ?: "command rejected"
+            val error = response.optJSONObject("error")
+            throw HaCommandException(
+                error?.optString("code").orEmpty(),
+                error?.optString("message") ?: "command rejected"
             )
         }
         return response
