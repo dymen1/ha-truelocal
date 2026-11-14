@@ -30,6 +30,7 @@ class BleCentral(
         fun onNotification(connectionHandle: Int, value: ByteArray)
         fun onUnexpectedDisconnect(connectionHandle: Int, reason: String)
         fun onLog(message: String)
+        fun onScanStopped(reason: String) {}
     }
 
     private val bluetoothAdapter: BluetoothAdapter? =
@@ -37,18 +38,40 @@ class BleCentral(
 
     private val connections = mutableMapOf<Int, GattConnection>()
     private var nextConnectionHandle = 1
+    @Volatile
     private var activeScanCallback: ScanCallback? = null
 
     fun startScan(serviceUuids: List<String>) {
         val adapter = requireAdapter()
-        if (activeScanCallback != null) {
-            throw BleProxyException("already_scanning", "A scan is already in progress")
+        val scanner = adapter.bluetoothLeScanner
+            ?: throw BleProxyException("bluetooth_unavailable", "No BLE scanner available")
+        // The BLE proxy protocol lets the server re-arm a running scan with new parameters,
+        // so replace the previous one instead of answering already_scanning forever.
+        activeScanCallback?.let { previous ->
+            scanner.stopScan(previous)
+            listener.onLog("Re-arming BLE scan with ${serviceUuids.size} service filter(s)")
         }
-        val filters = serviceUuids.map { uuid ->
-            ScanFilter.Builder().setServiceUuid(ParcelUuid(normalizeUuid(uuid))).build()
+        activeScanCallback = null
+        val filters = if (serviceUuids.isEmpty()) {
+            // Empty list means "match everything" per the protocol.
+            null
+        } else {
+            serviceUuids.flatMap { uuid ->
+                val parcelUuid = ParcelUuid(normalizeUuid(uuid))
+                listOf(
+                    // Devices that list the UUID in the Service UUIDs AD structure.
+                    ScanFilter.Builder().setServiceUuid(parcelUuid).build(),
+                    // Devices that only carry the UUID as the key of their Service Data AD
+                    // structure. Android never matches setServiceUuid() against service data,
+                    // and a Matter commissionable may omit the UUID-list entry to stay inside
+                    // the 31-byte legacy advertisement. An empty payload matches any data.
+                    ScanFilter.Builder().setServiceData(parcelUuid, EMPTY_SERVICE_DATA).build()
+                )
+            }
         }
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
             .build()
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
@@ -56,10 +79,16 @@ class BleCentral(
             }
 
             override fun onScanFailed(errorCode: Int) {
-                listener.onLog("BLE scan failed with code $errorCode")
+                // A stale callback must not clear a newer scan's handle.
+                if (activeScanCallback !== this) return
+                activeScanCallback = null
+                val reason = scanErrorName(errorCode)
+                listener.onLog("BLE scan failed: $reason")
+                // Without this the server keeps waiting for results that never arrive.
+                listener.onScanStopped(reason)
             }
         }
-        adapter.bluetoothLeScanner.startScan(filters, settings, callback)
+        scanner.startScan(filters, settings, callback)
         activeScanCallback = callback
     }
 
@@ -155,6 +184,18 @@ class BleCentral(
 
     companion object {
         private const val BASE_UUID_SUFFIX = "-0000-1000-8000-00805f9b34fb"
+        private val EMPTY_SERVICE_DATA = ByteArray(0)
+
+        private fun scanErrorName(errorCode: Int): String = when (errorCode) {
+            ScanCallback.SCAN_FAILED_ALREADY_STARTED -> "already_started"
+            ScanCallback.SCAN_FAILED_APPLICATION_REGISTRATION_FAILED ->
+                "application_registration_failed"
+            ScanCallback.SCAN_FAILED_INTERNAL_ERROR -> "internal_error"
+            ScanCallback.SCAN_FAILED_FEATURE_UNSUPPORTED -> "feature_unsupported"
+            ScanCallback.SCAN_FAILED_OUT_OF_HARDWARE_RESOURCES -> "out_of_hardware_resources"
+            ScanCallback.SCAN_FAILED_SCANNING_TOO_FREQUENTLY -> "scanning_too_frequently"
+            else -> "error_$errorCode"
+        }
 
         fun normalizeUuid(value: String): UUID {
             val lower = value.lowercase()

@@ -54,6 +54,7 @@
     <string name="msg_node_count">%1$d Matter-node(s) op de server</string>
     <string name="msg_nodes_failed">Nodes ophalen mislukt: %1$s</string>
     <string name="msg_bluetooth_off">Bluetooth staat uit; apparatenlijst blijft leeg</string>
+    <string name="msg_bluetooth_scan_failed">BLE-scan kon niet starten (%1$s)</string>
     <string name="no_matter_advertisement">geen Matter-advertentiedata</string>
     <string name="unnamed_device">naamloos</string>
     <string name="msg_token_required">Deze tab gebruikt de websocket-API van HA en vereist een token</string>
