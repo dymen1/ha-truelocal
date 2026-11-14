@@ -54,6 +54,7 @@
     <string name="msg_node_count">%1$d Matter node(s) on the server</string>
     <string name="msg_nodes_failed">Fetching nodes failed: %1$s</string>
     <string name="msg_bluetooth_off">Bluetooth is off; the device list stays empty</string>
+    <string name="msg_bluetooth_scan_failed">BLE scan could not start (%1$s)</string>
     <string name="no_matter_advertisement">no Matter advertisement data</string>
     <string name="unnamed_device">unnamed</string>
     <string name="msg_token_required">This tab uses the Home Assistant websocket API and requires a token</string>

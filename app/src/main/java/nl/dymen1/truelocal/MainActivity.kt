@@ -290,19 +290,42 @@ class MainActivity : AppCompatActivity() {
             appendLog(getString(R.string.msg_bluetooth_off))
             return
         }
-        val filter = ScanFilter.Builder()
-            .setServiceUuid(ParcelUuid(BleCentral.normalizeUuid(MATTER_SERVICE_UUID)))
-            .build()
+        val matterUuid = ParcelUuid(BleCentral.normalizeUuid(MATTER_SERVICE_UUID))
+        // Android only matches setServiceUuid() against the Service UUIDs AD structure
+        // (0x02/0x03), never against the key of the Service Data AD structure (0x16).
+        // Commissionable devices are free to advertise 0xFFF6 only as service data, so a
+        // UUID-list-only filter silently drops exactly those devices. Filters are OR-ed,
+        // therefore accepting either form covers every Matter commissionable advertisement.
+        val filters = listOf(
+            ScanFilter.Builder()
+                .setServiceUuid(matterUuid)
+                .build(),
+            ScanFilter.Builder()
+                .setServiceData(matterUuid, byteArrayOf(MATTER_OPCODE_COMMISSIONABLE_NODE))
+                .build()
+        )
+        // Commissionables drop to a 150-1500 ms advertising interval after the first 30 s,
+        // so a duty-cycled scan mode skips most of their packets.
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_BALANCED)
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
             .build()
         val callback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 registerDiscoveredDevice(result)
             }
+
+            override fun onScanFailed(errorCode: Int) {
+                deviceScanCallback = null
+                appendLog(getString(R.string.msg_bluetooth_scan_failed, errorCode.toString()))
+            }
         }
-        adapter.bluetoothLeScanner.startScan(listOf(filter), settings, callback)
-        deviceScanCallback = callback
+        try {
+            adapter.bluetoothLeScanner.startScan(filters, settings, callback)
+            deviceScanCallback = callback
+        } catch (error: SecurityException) {
+            appendLog(getString(R.string.msg_bluetooth_scan_failed, error.message.orEmpty()))
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -317,7 +340,12 @@ class MainActivity : AppCompatActivity() {
     private fun registerDiscoveredDevice(result: ScanResult) {
         val serviceData = result.scanRecord
             ?.getServiceData(ParcelUuid(BleCentral.normalizeUuid(MATTER_SERVICE_UUID)))
-        val details = if (serviceData != null && serviceData.size >= 7) {
+        // Commissionable Node Discovery payload: OpCode, 12-bit discriminator, VID, PID and
+        // the additional-data flag packed little endian, 8 bytes minimum.
+        val details = if (serviceData != null &&
+            serviceData.size >= 8 &&
+            serviceData[0] == MATTER_OPCODE_COMMISSIONABLE_NODE
+        ) {
             val discriminator = ((serviceData[2].toInt() and 0x0f) shl 8) or
                 (serviceData[1].toInt() and 0xff)
             val vendorId = ((serviceData[4].toInt() and 0xff) shl 8) or
@@ -942,6 +970,7 @@ class MainActivity : AppCompatActivity() {
     companion object {
         private const val SOURCE_URL = "https://github.com/dymen1/ha-truelocal"
         private const val MATTER_SERVICE_UUID = "fff6"
+        private const val MATTER_OPCODE_COMMISSIONABLE_NODE: Byte = 0x00
         private const val DEVICE_EXPIRY_MILLIS = 20_000L
     }
 }

@@ -2,6 +2,7 @@ package nl.dymen1.truelocal
 
 import android.content.Context
 import android.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,9 @@ class BleProxyClient(
     private val central = BleCentral(context.applicationContext, scope, this)
     private var webSocket: WebSocket? = null
     private val handshakeComplete = CompletableDeferred<Unit>()
-    private val discoveredAddresses = mutableSetOf<String>()
+    private val discoveredAddresses = ConcurrentHashMap.newKeySet<String>()
+    @Volatile
+    private var reportDuplicates = true
 
     fun connect(httpClient: OkHttpClient): CompletableDeferred<Unit> {
         val requestBuilder = Request.Builder().url(webSocketUrl)
@@ -128,8 +131,10 @@ class BleProxyClient(
         when (command) {
             "start_scan" -> {
                 val serviceUuids = args.optJSONArray("service_uuids").toStringList()
+                discoveredAddresses.clear()
+                reportDuplicates = args.optBoolean("allow_duplicates", true)
                 central.startScan(serviceUuids)
-                log("Scan started (filter: $serviceUuids)")
+                log("Scan started (filter: ${serviceUuids.ifEmpty { listOf("all") }})")
                 JSONObject()
             }
             "stop_scan" -> {
@@ -204,9 +209,11 @@ class BleProxyClient(
 
     override fun onDeviceDiscovered(data: JSONObject) {
         val address = data.optString("address")
-        if (discoveredAddresses.add(address)) {
+        val firstReport = discoveredAddresses.add(address)
+        if (firstReport) {
             log("Device discovered: $address (${data.optString("name", "unnamed")})")
         }
+        if (!reportDuplicates && !firstReport) return
         sendJson(JSONObject().put("event", "device_discovered").put("data", data))
     }
 
@@ -225,6 +232,15 @@ class BleProxyClient(
             JSONObject().put("event", "disconnected").put(
                 "data",
                 JSONObject().put("connection_handle", connectionHandle).put("reason", reason)
+            )
+        )
+    }
+
+    override fun onScanStopped(reason: String) {
+        sendJson(
+            JSONObject().put("event", "scan_stopped").put(
+                "data",
+                JSONObject().put("reason", reason)
             )
         )
     }
